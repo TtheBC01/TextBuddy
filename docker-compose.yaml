@@ -6,6 +6,8 @@ services:
       - ./src:/app
     ports:
       - "8000:8000"
+    environment:
+      TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     depends_on:
       - ollama
 
