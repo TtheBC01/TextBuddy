@@ -139,16 +139,31 @@ def chunk_message(text: str, chunk_size: int = MAX_MESSAGE_LENGTH) -> list[str]:
 
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the user message to Ollama and return the response using the active model."""
-    user_message = update.message.text
     user_id = update.effective_user.id
     model = user_active_models.get(user_id, "llama3")  # Default if none selected
+
+    def build_message_chain(msg):
+        """Walk up the reply chain and extract messages in reverse order."""
+        chain = []
+        current = msg
+        while current:
+            # Only include user-bot exchange (skip unrelated messages)
+            role = "user" if current.from_user.id == user_id else "assistant"
+            chain.append({
+                "role": role,
+                "content": current.text or ""  # Skip non-text?
+            })
+            current = current.reply_to_message
+        logger.info("Constructed message chain: %s", chain)
+        return list(reversed(chain))  # Oldest first
+    
+    # Construct the conversation history from the reply chain
+    messages = build_message_chain(update.message)
 
     try:
         response = ollama_client.chat(
             model=model,
-            messages=[
-                {"role": "user", "content": user_message}
-            ]
+            messages=messages
         )
         reply = response['message']['content']
     except Exception as e:
