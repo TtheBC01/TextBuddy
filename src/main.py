@@ -52,8 +52,8 @@ async def private_chat_only(update: Update) -> bool:
 
     return True
 
-async def set_model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
-    """Send a list of available models as inline buttons."""
+async def start(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
+    """Send a list of available models and an option to pull new ones as inline buttons on /start."""
     if not await private_chat_only(update):
         return
 
@@ -78,6 +78,7 @@ async def set_model_command(update: Update, context: ContextTypes.DEFAULT_TYPE) 
     reply_markup = InlineKeyboardMarkup(keyboard)
 
     await update.message.reply_text("Select a model to use for chat:", reply_markup=reply_markup)
+    return START_ROUTES
 
 async def handle_model_selection(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Handle the model selection button click."""
@@ -140,7 +141,7 @@ def chunk_message(text: str, chunk_size: int = MAX_MESSAGE_LENGTH) -> list[str]:
 async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
     """Send the user message to Ollama and return the response using the active model."""
     user_id = update.effective_user.id
-    model = user_active_models.get(user_id, "llama3")  # Default if none selected
+    model = user_active_models.get(user_id, "llama3.1:8b")  # Default if none selected
 
     def build_message_chain(msg):
         """Walk up the reply chain and extract messages in reverse order."""
@@ -174,6 +175,8 @@ async def echo(update: Update, context: ContextTypes.DEFAULT_TYPE) -> None:
         # Send each chunk separately to avoid Telegram's message length limit
         await update.message.reply_text(chunk)  
 
+# Stages
+START_ROUTES, END_ROUTES = range(2)
 # Define states for the conversation
 ASKING_MODEL = 1
 
@@ -190,18 +193,24 @@ def main() -> None:
 
     # Define conversation handler for setting an external address
     model_loader_conv_handler = ConversationHandler(
-        entry_points=[
-            CommandHandler("pullmodel", pull_model),
-            CallbackQueryHandler(pull_model, pattern="^pullmodel$")
+        entry_points=[CommandHandler("start", start)],
+        states={
+            START_ROUTES: [
+                CallbackQueryHandler(handle_model_selection, pattern="^setmodel:"),
+                CallbackQueryHandler(pull_model, pattern="^pullmodel$"),
+            ],
+            ASKING_MODEL: [
+                MessageHandler(filters.TEXT & ~filters.COMMAND, store_model),
+            ],
+        },
+        fallbacks=[
+            CommandHandler("start", start),
+            CommandHandler("cancel", cancel)
         ],
-        states={ASKING_MODEL: [MessageHandler(filters.TEXT & ~filters.COMMAND, store_model)]},
-        fallbacks=[CommandHandler("cancel", cancel)],
+        per_chat=True,
     )
 
     application.add_handler(model_loader_conv_handler)  # Add conversation handler
-    application.add_handler(CommandHandler("setmodel", set_model_command))
-    application.add_handler(CallbackQueryHandler(handle_model_selection, pattern="^setmodel:"))
-
 
     # on non command i.e message - echo the message on Telegram
     application.add_handler(MessageHandler(filters.TEXT & ~filters.COMMAND, echo))
