@@ -9,11 +9,11 @@ services:
     environment:
       TELEGRAM_BOT_TOKEN: ${TELEGRAM_BOT_TOKEN}
     depends_on:
-      - ollama
+      - ollama-service
 
-  ollama:
+  ollama-service:
     image: ollama/ollama:latest
-    container_name: ollama-service
+    container_name: ollama
     volumes:
       - ./ollama-volume:/root/.ollama
     ports:
